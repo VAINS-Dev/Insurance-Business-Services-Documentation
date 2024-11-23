@@ -8,7 +8,7 @@
 - [Overview](#overview)
 - [Configuration](./Configuration/VBA-INSURANCE-CORE.Configuration.md)
 - [Releases](./Releases/VBA-INSURANCE-CORE.Release.md)
-- [Back to Main Documentation](../Insurance-Business-Services.md)
+- [Back to Main Documentation](../README.md)
 
 ## Overview
 
@@ -18,4 +18,4 @@ VBA Insurance Core handles:
 
 ---
 
-**[Back to Main Documentation](../Insurance-Business-Services.md)**
+**[Back to Main Documentation](../README.md)**
