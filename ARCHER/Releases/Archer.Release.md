@@ -6,7 +6,7 @@ Changelog and release notes for ARCHER.
 
 - [Version 1.0](#version-10)
 - [Back to ARCHER Documentation](../ARCHER.md)
-- [Back to Main Documentation](../../Insurance-Business-Services.md)
+- [Back to Main Documentation](../../README.md)
 
 ## Version 1.0
 
@@ -15,4 +15,4 @@ Changelog and release notes for ARCHER.
 ---
 
 **[Back to ARCHER Documentation](../ARCHER.md)**  
-**[Back to Main Documentation](../../Insurance-Business-Services.md)**
+**[Back to Main Documentation](../../README.md)**
