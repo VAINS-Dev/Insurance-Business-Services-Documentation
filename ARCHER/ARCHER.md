@@ -7,7 +7,7 @@
 - [Overview](#overview)
 - [Configuration](./Configuration/Archer.Configuration.md)
 - [Releases](./Releases/Archer.Release.md)
-- [Back to Main Documentation](../Insurance-Business-Services.md)
+- [Back to Main Documentation](../../Insurance-Business-Services.md)
 
 ## Overview
 
