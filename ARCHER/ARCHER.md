@@ -1,6 +1,6 @@
 # ARCHER
 
-**ARCHER** is a microservice suite that manages payment automation within LIPAS
+**ARCHER** is a microservice that manages payment automation within LIPAS.
 
 ## Contents
 
