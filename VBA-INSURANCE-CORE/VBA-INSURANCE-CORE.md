@@ -7,7 +7,7 @@
 
 - [Overview](#overview)
 - [Configuration](./Configuration/VBA-INSURANCE-CORE.Configuration.md)
-- [Releases](./Releases/VBA-INSURANCE-CORE.Release.md)
+- [Releases](./Releases/VBA-INSURANCE-CORE.Releases.md)
 - [Back to Main Documentation](../README.md)
 
 ## Overview

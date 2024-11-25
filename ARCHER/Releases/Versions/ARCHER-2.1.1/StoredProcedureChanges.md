@@ -1,1 +1,764 @@
+---
 
+## Stored Procedure Changes (Existing SP's Changed)
+
+```markdown
+# Stored Procedure Changes 🛠️
+
+> **Release Version:** `v2.1.1`  
+> **Release Date:** `2024-09-30`
+
+---
+
+---
+
+## 📝 Modified Stored Procedures
+
+### **1. Procedure Name: `ARCHER_GetLoanPaymentDate`**
+
+- **Changes**:
+
+  - Modified logic to improve payment traceability and source of payment with considerations for DFB and Direct pay respectively.
+
+- **Impact**:
+
+ - Improved Payment history for evaluating loan payments
+
+- **Migration Notes**:
+
+  > **Note**: When migrating to production, database name must be changed to [LIFEPRO].
+
+---
+### ALTER PROCEDURE:
+```sql
+BEGIN TRANSACTION;
+
+USE INSENTRY;
+/* 
+ARCHER 2.1.1 Release
+
+Change: Modification to Loan Payment Date Calculation - Refinement - https://jira.devops.va.gov/browse/VILN-17852
+
+*/
+COMMIT TRANSACTION;
+
+
+USE [InSentry]
+GO
+/****** Object:  StoredProcedure [dbo].[ARCHER_GetLoanPaymentDate]    Script Date: 11/22/2024 2:55:33 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+--VERSION: 1.2 - 09/12/2024 - Drew-Schnabel (VA)
+ 
+	ALTER PROCEDURE [dbo].[ARCHER_GetLoanPaymentDate]
+ 
+	@PolicyNumber VARCHAR(10)
+ 
+	AS 
+	BEGIN
+ 
+	DECLARE @PROCESSDATE INT
+--	SET @PROCESSDATE = CONVERT(VARCHAR, DATEADD(DAY, -1, GETDATE()), 112)
+ 
+ 
+SELECT TOP 10 EFFECTIVE_DATE, 
+		CASE 
+			WHEN P.BILLING_FORM = 'LST' AND DEBIT_CODE in (47, 48) AND P.BILLING_CODE NOT IN ('WD', 'PU', 'ET', 'RP') AND TRANS_AMOUNT > P.MODE_PREMIUM THEN TRANS_AMOUNT - P.MODE_PREMIUM
+			WHEN P.BILLING_FORM = 'DIR' and DEBIT_CODE = 49 AND BILLING_CODE NOT IN ('WD', 'PU', 'ET', 'RP') AND TRANS_AMOUNT > P.MODE_PREMIUM THEN TRANS_AMOUNT - P.MODE_PREMIUM
+			WHEN A.DEBIT_CODE = '12' AND A.PAID_TO_DATE_ORIG <> A.PAID_TO_DATE_NEW THEN TRANS_AMOUNT - P.MODE_PREMIUM
+			ELSE TRANS_AMOUNT
+		END AS TRANS_AMOUNT
+	FROM [LIFEPRO_CONV1].[DBO].PACTG A
+	JOIN [LIFEPRO_CONV1].[DBO].PPOLC p on p.POLICY_NUMBER = a.policy_number
+	WHERE CREDIT_ACCOUNT = '3571.00'
+	AND A.POLICY_NUMBER = @PolicyNumber
+	AND DEBIT_CODE IN (12, 44, 45, 46, 47, 48, 49, 251)
+	AND CREDIT_CODE IN (12, 110, 451)
+	AND TRANS_AMOUNT <> p.MODE_PREMIUM
+	AND EFFECTIVE_DATE <= @ProcessDate
+	ORDER BY EFFECTIVE_DATE DESC, DATE_ADDED DESC
+ 
+	END
+
+```
+---
+### **2. Procedure Name: `ARCHER_GetLoanPayments`**
+
+- **Changes**:
+
+  - Added historical indexing to archer table to review if previous loan payment has failed in the last 3 days
+
+- **Impact**:
+
+ - Will decrease overall duplicative processing from business day to business day.
+
+- **Migration Notes**:
+
+  > **Note**: When migrating to production, database name must be changed to [LIFEPRO].
+
+---
+### ALTER PROCEDURE:
+```sql
+BEGIN TRANSACTION;
+
+USE INSENTRY;
+/* 
+ARCHER 2.1.1 Release
+
+Change: Loan Payment Check: Determine if Loan Payment Failure occurred in last 3 business days - https://jira.devops.va.gov/browse/VILN-17258
+
+*/
+
+
+
+COMMIT TRANSACTION;
+
+BEGIN TRANSACTION;
+
+/****** Object:  StoredProcedure [dbo].[ARCHER_GetLoanPayments]    Script Date: 11/22/2024 2:52:12 PM ******/
+
+SET ANSI_NULLS ON
+
+GO
+
+SET QUOTED_IDENTIFIER ON
+
+GO
+ 
+ 
+ALTER PROCEDURE [dbo].[ARCHER_GetLoanPayments]
+
+/*---------------------------------------------------------------------------*
+
+Description: This procedure is used to obtain loan payments to be applied that meet business rules.
+
+--//GetLoanPayments.sql Stored Procedure
+
+--This stored procedure is used by ARCHER to fetch loan payments from the suspense master table. This script applies business rule logic to the payments
+
+--to determine if payments can be automatically applied
+ 
+-- Author: @Drew-Schnabel
+
+-- Date last Updated: 11/22/2024
+
+-- Database [LIFEPRO_CONV1]
+
+*---------------------------------------------------------------------------*/
+ 
+AS
+ 
+BEGIN
+ 
+ 
+	IF OBJECT_ID('tempdb..#TEMP1') IS NOT NULL DROP TABLE #TEMP1
+
+	IF OBJECT_ID('tempdb..#Temp2') IS NOT NULL DROP TABLE #Temp2
+
+	IF OBJECT_ID('tempdb..#TEMP3') IS NOT NULL DROP TABLE #TEMP3
+
+	IF OBJECT_ID('tempdb..#TEMP8') IS NOT NULL DROP TABLE #TEMP8
+
+	IF OBJECT_ID('tempdb..#TEMP10') IS NOT NULL DROP TABLE #TEMP10
+
+	IF OBJECT_ID('tempdb..#TEMP11') IS NOT NULL DROP TABLE #TEMP11
+
+	IF OBJECT_ID('tempdb..#TEMP9') IS NOT NULL DROP TABLE #TEMP9
+
+	IF OBJECT_ID('tempdb..#TEMP12') IS NOT NULL DROP TABLE #TEMP12
+
+	IF OBJECT_ID('tempdb..#LOAN_MAIN') IS NOT NULL DROP TABLE #LOAN_MAIN
+ 
+				DECLARE @CURRENTDATE INT;
+
+				DECLARE @31DAYINADVANCE INT;
+
+				DECLARE @15DAYINADVANCE INT;
+
+				DECLARE @15DAYINARREARS INT;
+
+				DECLARE @PREMIUM VARCHAR(10)
+
+				DECLARE @PREMIUMCODE INT
+
+				DECLARE @LOAN VARCHAR(10)
+
+				DECLARE @LOANCODE INT
+
+				SET @CURRENTDATE = FORMAT(GETDATE(), 'yyyyMMdd');
+
+				SET @31DAYINADVANCE = FORMAT(DATEADD(DAY,+31,GETDATE()), 'yyyyMMdd');
+
+				SET @15DAYINADVANCE = FORMAT(DATEADD(DAY,+31,GETDATE()), 'yyyyMMdd');
+
+				SET @15DAYINARREARS = FORMAT(DATEADD(DAY,-15,GETDATE()), 'yyyyMMdd');
+
+				SET @PREMIUM = 'PREMIUM'
+
+				SET @PREMIUMCODE = 1
+
+				SET @LOAN = 'LOAN'
+
+				SET @LOANCODE = 2
+ 
+-- Dont include temp 4-7.
+
+SELECT DISTINCT --//TEMP1
+
+P.POLICY_NUMBER
+
+, PS.AMOUNT
+
+, YEAR(GETDATE()) AS TAX_YEAR
+
+, PS.ACTIVITY_DATE
+ 
+INTO #TEMP1
+ 
+FROM [LIFEPRO_CONV1].[DBO].PPOLC P
+
+JOIN [LIFEPRO_CONV1].[DBO].PSUSP_SUSPENSE_MASTER AS PS ON PS.SUSP_NUMBER = P.POLICY_NUMBER
+
+JOIN [LIFEPRO_CONV1].[DBO].PLOAN_LOAN_MASTER AS PL ON PL.POLICY_NUMBER = P.POLICY_NUMBER AND PL.STATUS_CODE ='A'
+ 
+WHERE P.PAID_UP_TYPE IN ('PU', 'RP', 'SP')
+
+AND p.CONTRACT_CODE ='A'
+
+AND PL.STATUS_CODE = 'A'
+
+AND PS.AMOUNT > 0.00
+
+	AND PS.ACCOUNT_NUMBER = '3571.00'
+ 
+ 
+SELECT DISTINCT --//TEMP 2
+
+P.POLICY_NUMBER
+
+, PS.AMOUNT
+
+, YEAR(GETDATE()) AS TAX_YEAR
+
+, PS.ACTIVITY_DATE
+ 
+INTO #TEMP2
+ 
+FROM [LIFEPRO_CONV1].[DBO].PPOLC P
+
+JOIN [LIFEPRO_CONV1].[DBO].PSUSP_SUSPENSE_MASTER AS PS ON PS.SUSP_NUMBER = P.POLICY_NUMBER
+
+JOIN [LIFEPRO_CONV1].[DBO].PLOAN_LOAN_MASTER AS PL ON PL.POLICY_NUMBER = P.POLICY_NUMBER AND PL.STATUS_CODE ='A'
+ 
+WHERE P.CONTRACT_CODE ='A'
+
+AND P.PAID_UP_TYPE NOT IN ('ET', 'RP', 'SP', 'PU')
+
+AND PS.AMOUNT > 0.00
+
+AND PS.AMOUNT >= P.LOAN_REPMT_AMOUNT
+
+AND PS.AMOUNT <> P.MODE_PREMIUM AND ps.amount <> p.MODE_PREMIUM*2 AND PS.AMOUNT <> P.MODE_PREMIUM*3
+
+AND P.PAID_TO_DATE >= @31DAYINADVANCE
+
+	AND PS.ACCOUNT_NUMBER = '3571.00'
+ 
+ 
+SELECT DISTINCT --//TEMP 3
+
+P.POLICY_NUMBER
+
+, PS.AMOUNT
+
+, YEAR(GETDATE()) AS TAX_YEAR
+
+, PS.ACTIVITY_DATE
+ 
+INTO #TEMP3
+
+FROM [LIFEPRO_CONV1].[DBO].PPOLC P
+
+JOIN [LIFEPRO_CONV1].[DBO].PSUSP_SUSPENSE_MASTER AS PS ON PS.SUSP_NUMBER = P.POLICY_NUMBER
+
+JOIN [LIFEPRO_CONV1].[DBO].PLOAN_LOAN_MASTER AS PL ON PL.POLICY_NUMBER = P.POLICY_NUMBER AND PL.STATUS_CODE ='A'
+ 
+WHERE P.BILLING_REASON = 'WD'
+
+AND p.CONTRACT_CODE ='A'
+
+AND PL.STATUS_CODE = 'A'
+
+AND PS.AMOUNT > 0.00
+
+	AND PS.ACCOUNT_NUMBER = '3571.00'
+ 
+ 
+SELECT DISTINCT --//TEMP 8
+
+P.POLICY_NUMBER
+
+, PS.AMOUNT
+
+, YEAR(GETDATE()) AS TAX_YEAR
+
+, PS.ACTIVITY_DATE
+ 
+	INTO #TEMP8
+
+FROM [LIFEPRO_CONV1].[DBO].PPOLC P
+
+JOIN [LIFEPRO_CONV1].[DBO].PSUSP_SUSPENSE_MASTER AS PS ON PS.SUSP_NUMBER = P.POLICY_NUMBER
+
+JOIN [LIFEPRO_CONV1].[DBO].PLOAN_LOAN_MASTER AS PL ON PL.POLICY_NUMBER = P.POLICY_NUMBER AND PL.STATUS_CODE ='A'
+ 
+WHERE P.CONTRACT_CODE ='A'
+
+AND P.PAID_UP_TYPE NOT IN ('ET', 'RP', 'SP', 'PU')
+
+AND PS.AMOUNT > 0.00
+
+AND PS.AMOUNT = P.LOAN_REPMT_AMOUNT OR PS.AMOUNT = P.LOAN_REPMT_AMOUNT*2 OR PS.AMOUNT = P.LOAN_REPMT_AMOUNT*3
+
+AND PS.AMOUNT <> P.MODE_PREMIUM AND ps.amount <> p.MODE_PREMIUM*2 AND PS.AMOUNT <> P.MODE_PREMIUM*3
+
+AND P.PAID_TO_DATE >= @31DAYINADVANCE
+
+	AND PS.ACCOUNT_NUMBER = '3571.00'
+ 
+ 
+ 
+SELECT DISTINCT --//TEMP 9
+
+			P.POLICY_NUMBER
+
+		,	PS.AMOUNT
+
+		,	YEAR(GETDATE()) AS TAX_YEAR
+
+		,	PS.ACTIVITY_DATE
+ 
+	into #temp9
+
+	FROM [LIFEPRO_CONV1].[DBO].PPOLC P
+
+		JOIN [LIFEPRO_CONV1].[DBO].PSUSP_SUSPENSE_MASTER PS ON PS.SUSP_NUMBER = P.POLICY_NUMBER
+
+		JOIN [LIFEPRO_CONV1].[DBO].PLOAN_LOAN_MASTER PL ON PL.POLICY_NUMBER = P.POLICY_NUMBER AND STATUS_CODE ='A'
+ 
+		WHERE P.CONTRACT_CODE = 'A'
+
+		AND PS.AMOUNT > 0.00
+
+		AND PS.AMOUNT LIKE '%.00'
+
+		AND P.PAID_TO_DATE >= @31DAYINADVANCE
+
+		AND PS.ACCOUNT_NUMBER = '3571.00'
+ 
+ 
+SELECT DISTINCT 
+
+			P.POLICY_NUMBER
+
+		,	PS.AMOUNT
+
+		,	YEAR(GETDATE()) AS TAX_YEAR
+
+		,	PS.ACTIVITY_DATE
+ 
+	into #temp10
+
+	FROM [LIFEPRO_CONV1].[DBO].PPOLC P
+
+		JOIN [LIFEPRO_CONV1].[DBO].PSUSP_SUSPENSE_MASTER PS ON PS.SUSP_NUMBER = P.POLICY_NUMBER
+
+		JOIN [LIFEPRO_CONV1].[DBO].PLOAN_LOAN_MASTER PL ON PL.POLICY_NUMBER = P.POLICY_NUMBER AND STATUS_CODE ='A'
+
+		WHERE CONTRACT_CODE = 'A'
+
+		AND AMOUNT >= PL.CAPITALIZED_AMOUNT
+
+			AND PS.ACCOUNT_NUMBER = '3571.00'
+ 
+SELECT DISTINCT 
+
+			P.POLICY_NUMBER
+
+		,	PS.AMOUNT
+
+		,	YEAR(GETDATE()) AS TAX_YEAR
+
+		,	PS.ACTIVITY_DATE
+ 
+	into #temp11
+
+	FROM [LIFEPRO_CONV1].[DBO].PPOLC P
+
+		JOIN [LIFEPRO_CONV1].[DBO].PSUSP_SUSPENSE_MASTER PS ON PS.SUSP_NUMBER = P.POLICY_NUMBER
+
+		JOIN [LIFEPRO_CONV1].[DBO].PLOAN_LOAN_MASTER PL ON PL.POLICY_NUMBER = P.POLICY_NUMBER AND STATUS_CODE ='A'
+
+		JOIN [LIFEPRO_CONV1].[DBO].PPBEN_POLICY_BENEFITS AS PB ON PB.POLICY_NUMBER = P.POLICY_NUMBER 
+
+		WHERE CONTRACT_CODE = 'A'
+
+		AND PAYMENT_CODE = 'A'
+
+			AND PS.ACCOUNT_NUMBER = '3571.00'
+
+			AND P.PAID_TO_DATE = pb.PAY_UP_DATE
+
+			AND AMOUNT > 0.00
+ 
+ 
+SELECT DISTINCT --//TEMP 9
+
+			P.POLICY_NUMBER
+
+		,	PS.AMOUNT
+
+		,	YEAR(GETDATE()) AS TAX_YEAR
+
+		,	PS.ACTIVITY_DATE
+ 
+	INTO #TEMP12
+
+	FROM [LIFEPRO_CONV1].[DBO].PPOLC P
+
+		JOIN [LIFEPRO_CONV1].[DBO].PSUSP_SUSPENSE_MASTER PS ON PS.SUSP_NUMBER = P.POLICY_NUMBER
+
+		JOIN [LIFEPRO_CONV1].[DBO].PLOAN_LOAN_MASTER PL ON PL.POLICY_NUMBER = P.POLICY_NUMBER AND STATUS_CODE ='A'
+ 
+		WHERE P.CONTRACT_CODE = 'A'
+
+		AND PAYMENT_CODE = 'A'
+
+		AND PS.AMOUNT > 0.00
+
+		AND PS.ACCOUNT_NUMBER = '3571.00'
+
+		AND P.PAID_TO_DATE >= @15DAYINARREARS
+
+		AND ps.AMOUNT <> P.MODE_PREMIUM
+ 
+		
+ 
+	SELECT * INTO #LOAN_MAIN 
+
+					FROM #TEMP1
+
+	INSERT INTO #LOAN_MAIN 
+
+		SELECT *	FROM #TEMP2
+
+	INSERT INTO #LOAN_MAIN 
+
+		SELECT *	FROM #TEMP3
+
+	INSERT INTO #LOAN_MAIN 
+
+		SELECT *	FROM #TEMP8
+
+	INSERT INTO #LOAN_MAIN 
+
+		SELECT *	FROM #TEMP9
+
+	INSERT INTO #LOAN_MAIN
+
+		SELECT *	FROM #TEMP10
+
+	INSERT INTO #LOAN_MAIN
+
+		SELECT *	FROM #temp11
+
+	INSERT INTO #LOAN_MAIN
+
+		SELECT *	FROM #temp12
+
+ 
+	SELECT DISTINCT 
+
+						L.*
+
+					--, PL.LOAN_BALANCE
+
+					--, P.PAID_TO_DATE
+
+					--, PAID_UP_TYPE
+
+					--, PL.CAPITALIZED_AMOUNT 
+
+			FROM #LOAN_MAIN L
+
+		--LEFT JOIN PLOAN_LOAN_MASTER PL ON PL.POLICY_NUMBER = L.POLICY_NUMBER AND STATUS_CODE = 'A'
+
+		JOIN [LIFEPRO_CONV1].[DBO].PPOLC P ON P.POLICY_NUMBER = L.POLICY_NUMBER
+
+		JOIN [LIFEPRO_CONV1].[DBO].PPBEN_POLICY_BENEFITS PB ON PB.POLICY_NUMBER = L.POLICY_NUMBER
+
+		JOIN [LIFEPRO_CONV1].[DBO].PPBEN_POLICY_BENEFITS_TYPES_BA_OR PBA ON PBA.PBEN_ID = PB.PBEN_ID AND EXCESS_DIVIDEND NOT IN ('4','1','6', '.')
+
+		AND P.LINE_OF_BUSINESS = 'L'
+
+		WHERE P.CONTRACT_CODE ='A'
+
+		AND P.PAYMENT_CODE = 'A'
+
+		AND L.POLICY_NUMBER NOT IN (select policynumber from archer where PaymentStatus = 1 and paymentcode = 1 and LogDate >= DATEADD( DAY, -3, GETDATE()))
+
+		--New Check to validate of a payment has been attempted in the last 3 days and has errored out, if Yes, we will ignore.
+ 
+ 
+		order by amount DESC
+ 
+END
+
+ 
+
+ COMMIT TRANSACTION;
+ ```
+---
+
+### **3. Procedure Name: `ARCHER_GetPremiumPayments`**
+
+- **Changes**:
+
+  - Added historical indexing to archer table to review if previous premium payment has failed in the last 3 days
+
+- **Impact**:
+
+ - Will decrease overall duplicative processing from business day to business day.
+
+- **Migration Notes**:
+
+  > **Note**: When migrating to production, database name must be changed to [LIFEPRO].
+
+---
+### ALTER PROCEDURE:
+```sql
+BEGIN TRANSACTION;
+
+USE INSENTRY;
+/* 
+ARCHER 2.1.1 Release
+
+Change: Premium Payment Check: Determine if Premium Payment Failure occurred in last 3 business days - https://jira.devops.va.gov/browse/VILN-17259
+
+*/
+COMMIT TRANSACTION;
+
+
+BEGIN TRANSACTION;
+/****** Object:  StoredProcedure [dbo].[ARCHER_GetPremiumPayments]    Script Date: 11/22/2024 2:55:29 PM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+ 
+ 
+ALTER PROCEDURE [dbo].[ARCHER_GetPremiumPayments]
+/*---------------------------------------------------------------------------*
+Description: This procedure is used to obtainpremium payments that meet business rules.
+--//GetPremiumPayments.sql Stored Procedure
+--This stored procedure is used by ARCHER to fetch premium payments from the suspense master table. This script applies business rule logic to the payments
+--to determine if payments can be automatically applied
+ 
+-- Author: @Drew-Schnabel
+-- Date last Updated: 11/22/2024
+-- Database [LIFEPRO_CONV1]
+*---------------------------------------------------------------------------*/
+ 
+AS
+ 
+BEGIN
+ 
+
+DECLARE @FUTUREPTDRANGE INT 
+DECLARE @PREMIUM VARCHAR(10)
+DECLARE @PREMIUMCODE INT
+DECLARE @LOAN VARCHAR(10)
+DECLARE @LOANCODE INT
+DECLARE @WITHIN15DAYS INT
+DECLARE @PASTDUEPREMIUMRANGE INT
+SET @WITHIN15DAYS = FORMAT(DATEADD(DAY,+15,GETDATE()), 'yyyyMMdd')
+SET @FUTUREPTDRANGE = FORMAT(DATEADD(DAY, +31, GETDATE()), 'yyyyMMdd')
+SET @PASTDUEPREMIUMRANGE = FORMAT(DATEADD(DAY, -15, GETDATE()), 'yyyyMMdd')
+ 
+ 
+SELECT DISTINCT --VIW-1521
+P.POLICY_NUMBER
+, PS.AMOUNT
+, YEAR(GETDATE()) AS TAX_YEAR
+, PS.ACTIVITY_DATE
+	INTO #TEMP4
+FROM [LIFEPRO_CONV1].[DBO].PPOLC P
+JOIN [LIFEPRO_CONV1].[DBO].PSUSP_SUSPENSE_MASTER AS PS ON PS.SUSP_NUMBER = P.POLICY_NUMBER
+ 
+WHERE P.PAID_UP_TYPE NOT IN ('PU', 'RP', 'SP', 'ET')AND P.BILLING_REASON <> 'WD'
+AND p.CONTRACT_CODE ='A'
+AND PS.AMOUNT >= P.MODE_PREMIUM
+AND P.POLICY_NUMBER NOT IN (SELECT POLICY_NUMBER FROM [LIFEPRO_CONV1].[DBO].PLOAN_LOAN_MASTER WHERE STATUS_CODE = 'A' AND POLICY_NUMBER = P.POLICY_NUMBER)
+	AND P.PAID_TO_DATE < @WITHIN15DAYS
+	AND PS.ACCOUNT_NUMBER = '3571.00'
+ 
+/*
+	select t.*, p.mode_premium, p.contract_code, p.billing_form, p.paid_to_date from #temp4 t
+	join ppolc p on p.policy_number = t.policy_number
+ 
+*/
+ 
+ 
+SELECT DISTINCT --VIW-1522
+P.POLICY_NUMBER
+, PS.AMOUNT
+, YEAR(GETDATE()) AS TAX_YEAR
+, PS.ACTIVITY_DATE
+	INTO #TEMP5 
+FROM [LIFEPRO_CONV1].[DBO].PPOLC P
+JOIN [LIFEPRO_CONV1].[DBO].PSUSP_SUSPENSE_MASTER AS PS ON PS.SUSP_NUMBER = P.POLICY_NUMBER
+WHERE P.PAID_UP_TYPE NOT IN ('PU', 'RP', 'SP', 'ET')AND P.BILLING_REASON <> 'WD'
+	AND BILLING_FORM NOT IN ('LST', 'PAC')
+AND p.CONTRACT_CODE ='A'
+AND PS.AMOUNT > 0.00
+and PS.AMOUNT = P.MODE_PREMIUM
+	AND PS.ACCOUNT_NUMBER = '3571.00'
+ 
+ 
+SELECT DISTINCT --VIW-1523
+P.POLICY_NUMBER
+, PS.AMOUNT
+, YEAR(GETDATE()) AS TAX_YEAR
+, PS.ACTIVITY_DATE
+ 
+	INTO #TEMP6
+FROM [LIFEPRO_CONV1].[DBO].PPOLC P
+JOIN [LIFEPRO_CONV1].[DBO].PSUSP_SUSPENSE_MASTER AS PS ON PS.SUSP_NUMBER = P.POLICY_NUMBER
+LEFT JOIN [LIFEPRO_CONV1].[DBO].PLOAN_LOAN_MASTER AS PL ON PL.POLICY_NUMBER = P.POLICY_NUMBER
+ 
+WHERE P.PAID_UP_TYPE NOT IN ('PU', 'RP', 'SP', 'ET')AND P.BILLING_REASON <> 'WD'
+	AND BILLING_FORM NOT IN ('LST')
+AND p.CONTRACT_CODE = 'A'
+AND PS.AMOUNT > 0.00
+and PS.AMOUNT >= P.MODE_PREMIUM
+AND P.POLICY_NUMBER NOT IN (SELECT POLICY_NUMBER FROM [LIFEPRO_CONV1].[DBO].PLOAN_LOAN_MASTER WHERE STATUS_CODE = 'A' AND POLICY_NUMBER = P.POLICY_NUMBER)
+	AND PS.ACCOUNT_NUMBER = '3571.00'
+ 
+ 
+SELECT DISTINCT --VIW-1526
+P.POLICY_NUMBER
+, PS.AMOUNT
+, YEAR(GETDATE()) AS TAX_YEAR
+, PS.ACTIVITY_DATE
+	INTO #TEMP7
+FROM [LIFEPRO_CONV1].[DBO].PPOLC P
+JOIN [LIFEPRO_CONV1].[DBO].PSUSP_SUSPENSE_MASTER AS PS ON PS.SUSP_NUMBER = P.POLICY_NUMBER
+LEFT JOIN [LIFEPRO_CONV1].[DBO].PLOAN_LOAN_MASTER AS PL ON PL.POLICY_NUMBER = P.POLICY_NUMBER AND STATUS_CODE = 'A'
+ 
+WHERE P.PAID_UP_TYPE NOT IN ('PU', 'RP', 'SP', 'ET')AND P.BILLING_REASON <> 'WD'
+	AND BILLING_FORM NOT IN ('LST')
+AND p.CONTRACT_CODE ='A'
+AND PS.AMOUNT > 0.00
+and PS.AMOUNT >= P.MODE_PREMIUM
+AND p.PAID_TO_DATE<= @WITHIN15DAYS
+	AND PS.ACCOUNT_NUMBER = '3571.00'
+ 
+ 
+--//All Premiums Payable on Suspense List
+ 
+	SELECT DISTINCT --VIW-1526
+P.POLICY_NUMBER
+, PS.AMOUNT
+, YEAR(GETDATE()) AS TAX_YEAR
+, PS.ACTIVITY_DATE
+ 
+
+	INTO #TEMP8
+FROM [LIFEPRO_CONV1].[DBO].PPOLC P
+JOIN [LIFEPRO_CONV1].[DBO].PSUSP_SUSPENSE_MASTER AS PS ON PS.SUSP_NUMBER = P.POLICY_NUMBER
+ 
+WHERE P.PAID_UP_TYPE NOT IN ('PU', 'RP', 'SP', 'ET') 
+	AND p.CONTRACT_CODE = 'A'
+	AND PRODUCT_CODE = 'LG9GBV'
+	AND PS.AMOUNT >= P.MODE_PREMIUM
+	AND PS.ACCOUNT_NUMBER = '3571.00'
+ 
+ 
+	
+	SELECT * INTO #PREMIUM_MAIN 
+					FROM #TEMP4
+	INSERT INTO #PREMIUM_MAIN
+		SELECT *	FROM #TEMP5
+	INSERT INTO #PREMIUM_MAIN
+		SELECT *	FROM #TEMP6
+	INSERT INTO #PREMIUM_MAIN
+		SELECT *	FROM #TEMP7
+	INSERT INTO #PREMIUM_MAIN
+		SELECT *	FROM #TEMP8
+ 
+ 
+ 
+	--//ALL PREMIUMS PAYABLE / ELIGIBLE FOR PAYMENT
+	SELECT DISTINCT
+ 
+PM.*, p.MODE_PREMIUM, PAID_TO_DATE, p.BILLING_FORM, PL.CAPITALIZED_AMOUNT, PAY_UP_DATE, pl.loan_balance
+		FROM #PREMIUM_MAIN AS PM
+			JOIN [LIFEPRO_CONV1].[DBO].PPOLC P ON P.POLICY_NUMBER = PM.POLICY_NUMBER
+			LEFT JOIN [LIFEPRO_CONV1].[DBO].PLOAN_LOAN_MASTER AS PL ON PL.POLICY_NUMBER = PM.POLICY_NUMBER AND PL.STATUS_CODE = 'A'	AND PM.AMOUNT <> PL.CAPITALIZED_AMOUNT
+			JOIN [LIFEPRO_CONV1].[DBO].PPBEN_POLICY_BENEFITS AS PB ON PB.POLICY_NUMBER = PM.POLICY_NUMBER
+			JOIN [LIFEPRO_CONV1].[DBO].PPBEN_POLICY_BENEFITS_TYPES_BA_OR PBA ON PBA.PBEN_ID = PB.PBEN_ID AND EXCESS_DIVIDEND NOT IN ('4','1','6', '.')
+			WHERE P.PAID_TO_DATE <> PB.PAY_UP_DATE
+			and p.LINE_OF_BUSINESS = 'L'
+			AND PB.BENEFIT_SEQ=1
+			AND P.BILLING_CODE = 'A'
+			AND P.PAYMENT_CODE = 'A'
+			AND P.POLICY_NUMBER NOT IN (select policynumber from archer where PaymentStatus = 1 and PaymentCode = 2 and LogDate >= DATEADD( DAY, -3, GETDATE()))
+			--New Check to validate of a payment has been attempted in the last 3 days and has errored out, if Yes, we will ignore.
+ 
+
+ 
+END
+
+COMMIT TRANSACTION;
+```
+---
+
+### **Migration Notes**:
++ Migrates stored procedures to new [InsuranceBusinessService] schema design after modifications are completed.
+
+```sql
+/*
+Release Notes:
+- This script is used to convert all old stored procedures to the new schema, it will also update the Lipas-Client configuration table to reflect the new stored procedures schema.
+- Should be released with ARCHER 2.1.1
+- This script must be executed after LIPAS-Client Installation.
+
+https://jira.devops.va.gov/browse/VILN-17850
+https://jira.devops.va.gov/browse/VILN-18306
+
+*/
+
+
+ALTER SCHEMA [InsuranceBusinessService] TRANSFER dbo.ARCHER_GetByAccountingControlNumber
+
+ALTER SCHEMA [InsuranceBusinessService] TRANSFER dbo.ARCHER_GetLoanPaymentDate
+UPDATE [InsuranceBusinessService].[StoredProcedureConfiguration] SET ConfigValue = 'Insentry.InsuranceBusinessService.ARCHER_GetLoanPaymentDate', ModifiedDate = GetDate() WHERE ConfigKey = 'STORED_PROCEDURE_GETLOANPAYMENTDATE'
+
+ALTER SCHEMA [InsuranceBusinessService] TRANSFER dbo.ARCHER_GetLoanPayments
+UPDATE [InsuranceBusinessService].[StoredProcedureConfiguration] SET ConfigValue = 'Insentry.InsuranceBusinessService.ARCHER_GetLoanPayments', ModifiedDate = GetDate() WHERE ConfigKey = 'STORED_PROCEDURE_GETLOANPAYMENTS'
+
+ALTER SCHEMA [InsuranceBusinessService] TRANSFER dbo.ARCHER_GetPremiumPayments
+UPDATE [InsuranceBusinessService].[StoredProcedureConfiguration] SET ConfigValue = 'Insentry.InsuranceBusinessService.ARCHER_GetPremiumPayments', ModifiedDate = GetDate() WHERE ConfigKey = 'STORED_PROCEDURE_GETPREMIUMPAYMENTS'
+
+ALTER SCHEMA [InsuranceBusinessService] TRANSFER dbo.ARCHER_GetSuspenseByPolicyNumber
+UPDATE [InsuranceBusinessService].[StoredProcedureConfiguration] SET ConfigValue = 'Insentry.InsuranceBusinessService.ARCHER_GetSuspenseByPolicyNumber', ModifiedDate = GetDate() WHERE ConfigKey = 'STORED_PROCEDURE_GETSUSPENSEBYPOLICYNUMBER'
+
+
+
+
+
+```
+
+> **[⬅️ Back to ARCHER Release Notes](../ARCHER-2.1.1/2.1.1.md)**

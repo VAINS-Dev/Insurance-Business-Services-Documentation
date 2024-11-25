@@ -8,13 +8,12 @@ Detailed instructions on configuring ARCHER for your environment.
 - [Back to ARCHER Documentation](../ARCHER.md)
 - [Back to Main Documentation](../../README.md)
 
-## Configuration Steps
+---
 
-1. **Database Setup**
-   - Instructions...
+## Configuration
 
-2. **Environment Variables**
-   - Instructions...
+See [LIPAS-Client Configuration](./../../LIPAS-Client/LIPAS-Client.md)
+
 
 ---
 

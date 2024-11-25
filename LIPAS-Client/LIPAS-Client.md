@@ -6,7 +6,7 @@ The **LIPAS Client** library provides centralized client management across the s
 
 - [Overview](#overview)
 - [Configuration](./Configuration/LIPAS-Client.Configuration.md)
-- [Releases](./Releases/LIPAS-Client.Release.md)
+- [Releases](./Releases/LIPAS-Client.Releases.md)
 - [Back to Main Documentation](../README.md)
 
 ## Overview

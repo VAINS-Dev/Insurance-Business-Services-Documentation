@@ -7,7 +7,6 @@
 - [Overview](#overview)
 - [Configuration](./Configuration/Archer.Configuration.md)
 - [Releases](./Releases/Archer.Release.md)
-- [Back to Main Documentation](../README.md)
 
 ## Overview
 
