@@ -6,8 +6,6 @@ Welcome to the **Insurance Business Services** documentation repository. This su
   - [ARCHER](./ARCHER/ARCHER.md)
   - [LIPAS Client](./LIPAS-Client/LIPAS-Client.md)
   - [VBA Insurance Core](./VBA-INSURANCE-CORE/VBA-INSURANCE-CORE.md)
-- [Getting Started](#getting-started)
-- [Support](#support)
 - [License](#license)
 
 
