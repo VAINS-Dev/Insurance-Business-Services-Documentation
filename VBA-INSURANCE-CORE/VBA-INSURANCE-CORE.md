@@ -1,4 +1,3 @@
-
 # VBA Insurance Core
 
 **VBA Insurance Core** microservice suite.
@@ -13,8 +12,9 @@
 ## Overview
 
 VBA Insurance Core handles:
-
-*need synopsis here*
+> Correspondence Automation
+> Cancel SDVI automation
+> Disbursement Automation
 
 ---
 
