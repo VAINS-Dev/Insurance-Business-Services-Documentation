@@ -12,9 +12,9 @@
 ## Overview
 
 VBA Insurance Core handles:
-> Correspondence Automation
-> Cancel SDVI automation
-> Disbursement Automation
++ > Correspondence Automation
++ > Cancel SDVI automation
++ > Disbursement Automation
 
 ---
 

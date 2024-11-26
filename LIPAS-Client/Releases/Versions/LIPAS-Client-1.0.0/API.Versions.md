@@ -92,10 +92,10 @@
 
 | Version | Date       | Description                |
 | ------- | ---------- | -------------------------- |
-| 1.0.0   | 2024-08-01 | Initial release             |
+| 1.0.0   | 2024-08-01 | Initial release            |
 
 ---
 
 ---
 
-> **[⬅️ Back to LIPAS-Client Release Notes](../LIPAS-Client-1.0.0/1.1.0.md)**
+> **[⬅️ Back to LIPAS-Client Release Notes](../LIPAS-Client-1.0.0/1.0.0.md)**
